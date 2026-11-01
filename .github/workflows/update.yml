@@ -1,0 +1,28 @@
+name: Update playlist
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: uv run --locked python test_build.py
+      - run: uv run --locked python build.py
+      - name: Commit if changed
+        run: |
+          git add german-tv.m3u
+          git diff --cached --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898328+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update playlist"
+          git push
