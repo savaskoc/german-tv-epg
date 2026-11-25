@@ -2,10 +2,8 @@ name: Update playlist
 
 on:
   schedule:
-    - cron: "17 */6 * * *"
+    - cron: "0 5 * * *" # 06:00 CET / 07:00 CEST (cron is UTC)
   workflow_dispatch:
-  push:
-    branches: [main]
 
 permissions:
   contents: write
@@ -15,12 +13,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.3.3
-      - run: uv run --locked python test_build.py
-      - run: uv run --locked python build.py
-      - name: Commit if changed
+      - name: Check if playlist or EPG changed
+        id: src
         run: |
-          git add german-tv.m3u
+          urls=$(grep -oP '^(PLAYLIST_URL|EPG_URL) = "\K[^"]+' build.py)
+          new=$(for u in $urls; do curl -fsSL "$u"; done | sha256sum | cut -d' ' -f1)
+          old=$(cat .sources.sha256 2>/dev/null || true)
+          echo "$new" > .sources.sha256
+          # manual runs always rebuild
+          [ "$new" != "$old" ] || [ "${{ github.event_name }}" = workflow_dispatch ] && echo "changed=true" >> "$GITHUB_OUTPUT" || true
+      - if: steps.src.outputs.changed == 'true'
+        uses: astral-sh/setup-uv@v10.3.3
+      - if: steps.src.outputs.changed == 'true'
+        run: uv run --locked python build.py
+      - name: Commit if changed
+        if: steps.src.outputs.changed == 'true'
+        run: |
+          git add german-tv.m3u .sources.sha256
           git diff --cached --quiet && exit 0
           git config user.name "github-actions[bot]"
           git config user.email "41898328+github-actions[bot]@users.noreply.github.com"
